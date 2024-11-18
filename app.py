@@ -8,7 +8,12 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 # Load the pre-trained model (make sure the path to the .h5 file is correct)
-model = load_model('model/brain_tumor_detector.h5')
+try:
+    model = load_model('model/brain_tumor_detector.h5')
+    print("Model loaded successfully!")
+except Exception as e:
+    print(f"Error loading model: {e}")
+    model = None
 
 # Upload folder for storing images temporarily
 UPLOAD_FOLDER = 'static/uploads'
@@ -40,23 +45,31 @@ def predict():
     
     if file and allowed_file(file.filename):
         # Save the file securely
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
+        try:
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
 
-        # Preprocess the image
-        img = cv2.imread(file_path)
-        img = cv2.resize(img, (224, 224))  # Resize to match model input size
-        img = img / 255.0  # Normalize image
-        img = np.expand_dims(img, axis=0)  # Add batch dimension
+            # Preprocess the image
+            img = cv2.imread(file_path)
+            if img is None:
+                return jsonify({'error': 'Invalid image file'}), 400
 
-        # Make prediction
-        prediction = model.predict(img)
-        result = "Tumor Detected" if prediction[0][0] > 0.5 else "No Tumor Detected"
-        probability = prediction[0][0]
+            img = cv2.resize(img, (224, 224))  # Resize to match model input size
+            img = img / 255.0  # Normalize image
+            img = np.expand_dims(img, axis=0)  # Add batch dimension
 
-        # Return prediction result and probability as JSON
-        return jsonify({'prediction': result, 'probability': float(probability)})
+            # Make prediction
+            prediction = model.predict(img)
+            result = "Tumor Detected" if prediction[0][0] > 0.5 else "No Tumor Detected"
+            probability = prediction[0][0]
+
+            # Return prediction result and probability as JSON
+            return jsonify({'prediction': result, 'probability': float(probability)})
+
+        except Exception as e:
+            print(f"Error processing the image or prediction: {e}")
+            return jsonify({'error': str(e)}), 500
 
     else:
         return jsonify({'error': 'Invalid file type. Allowed formats: png, jpg, jpeg'}), 400
