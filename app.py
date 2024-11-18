@@ -1,67 +1,66 @@
-import os
+from flask import Flask, request, jsonify
+from keras.models import load_model
 import numpy as np
 import cv2
-from flask import Flask, request, jsonify
-from tensorflow.keras.models import load_model
+import os
 from werkzeug.utils import secure_filename
 
-# Initialize Flask app
 app = Flask(__name__)
 
-# Load your pre-trained model
-model = load_model('model/brain_tumor_detector.h5')  # Update with your actual model path
+# Load the pre-trained model (make sure the path to the .h5 file is correct)
+model = load_model('model/brain_tumor_detector.h5')
 
-# Define allowed file extensions
+# Upload folder for storing images temporarily
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Allowed file extensions for the image upload
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
-# Check if the file has an allowed extension
+# Function to check allowed file extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Prediction route
+@app.route('/')
+def home():
+    """Simple endpoint to check if the API is running."""
+    return "Brain Tumor Detection API is running!"
+
 @app.route('/predict', methods=['POST'])
 def predict():
+    """Handle file upload and return prediction."""
     if 'image' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return jsonify({'error': 'No file part'}), 400
 
     file = request.files['image']
-
+    
     if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-
+        return jsonify({'error': 'No selected file'}), 400
+    
     if file and allowed_file(file.filename):
-        # Save the file temporarily
+        # Save the file securely
         filename = secure_filename(file.filename)
-        file_path = os.path.join('uploads', filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
 
-        # Read the image
+        # Preprocess the image
         img = cv2.imread(file_path)
-
-        # Resize the image to (224, 224) to match the model's expected input size
-        img = cv2.resize(img, (224, 224))
-
-        # Normalize the image
-        img = img / 255.0
-
-        # Add batch dimension (1, 224, 224, 3)
-        img = np.expand_dims(img, axis=0)
-
-        # Ensure the image shape is correct before prediction (optional debug print)
-        print("Image shape before prediction:", img.shape)
+        img = cv2.resize(img, (224, 224))  # Resize to match model input size
+        img = img / 255.0  # Normalize image
+        img = np.expand_dims(img, axis=0)  # Add batch dimension
 
         # Make prediction
-        try:
-            prediction = model.predict(img)
-            # Assuming binary classification (you can modify this based on your model)
-            result = 'Tumor' if prediction[0] > 0.5 else 'No Tumor'
-            return jsonify({"prediction": result}), 200
-        except Exception as e:
-            print(e)
-            return jsonify({"error": "Prediction failed"}), 500
+        prediction = model.predict(img)
+        result = "Tumor Detected" if prediction[0][0] > 0.5 else "No Tumor Detected"
+        probability = prediction[0][0]
+
+        # Return prediction result and probability as JSON
+        return jsonify({'prediction': result, 'probability': float(probability)})
+
     else:
-        return jsonify({"error": "Invalid file format. Only PNG, JPG, JPEG are allowed."}), 400
+        return jsonify({'error': 'Invalid file type. Allowed formats: png, jpg, jpeg'}), 400
 
 if __name__ == '__main__':
-    # Make sure to bind to the correct port (usually 10000 in Render)
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
