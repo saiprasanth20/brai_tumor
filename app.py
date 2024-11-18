@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 # Load your pre-trained model
-model = load_model('path_to_your_model.h5')  # Update with your actual model path
+model = load_model('model/brain_tumor_detector.h5')  # Update with your actual model path
 
 # Define allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
